@@ -30,6 +30,10 @@ public class MapleController {
         .map(ResponseEntity::ok)
         .onErrorResume(ex -> {
           ex.printStackTrace();
+          if (ex instanceof IllegalArgumentException) {
+            return Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", ex.getMessage())));
+          }
           return Mono.just(ResponseEntity.status(HttpStatus.BAD_GATEWAY)
               .body(Map.of("error", ex.getMessage())));
         });
@@ -38,12 +42,22 @@ public class MapleController {
   // 테스트용: 프론트에서 닉네임 출력
   @GetMapping("/nickname")
   public Mono<ResponseEntity<String>> getNickname(@RequestParam String name) {
-    System.out.println("요청 닉네임: " + name);
     return nexonService.getCharacterByName(name)
         .map(characterMap -> (String) characterMap.get("character_name"))
         .map(ResponseEntity::ok)
         .onErrorResume(ex -> {
           ex.printStackTrace();
+          // WebClientResponseException이면 상태 코드 확인
+          if (ex instanceof org.springframework.web.reactive.function.client.WebClientResponseException) {
+            org.springframework.web.reactive.function.client.WebClientResponseException we =
+                (org.springframework.web.reactive.function.client.WebClientResponseException) ex;
+            if (we.getRawStatusCode() == 400) {
+              // 400은 없는 닉네임
+              return Mono.just(ResponseEntity.status(404)
+                  .body("존재하지 않는 닉네임입니다."));
+            }
+          }
+          // 그 외 에러
           return Mono.just(ResponseEntity.status(502)
               .body("API 요청 실패: " + ex.getMessage()));
         });
