@@ -45,4 +45,15 @@ public class NexonService {
           return fetchCharacterBasic(ocid);
         });
   }
+
+  // 캐릭터 착용 아이템 조회
+  public Mono<Map<String, Object>> fetchCharacterItems(String ocid) {
+    return webClient.get()
+        .uri(uriBuilder -> uriBuilder
+            .path("/maplestory/v1/character/item-equipment")
+            .queryParam("ocid", ocid)
+            .build())
+        .retrieve()
+        .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+  }
 }

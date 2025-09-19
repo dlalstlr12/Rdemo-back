@@ -2,7 +2,6 @@ package com.example.Pdemo_backend.controller;
 
 import com.example.Pdemo_backend.service.NexonService;
 import java.util.Map;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,20 +21,32 @@ public class MapleController {
     this.nexonService = nexonService;
   }
 
-  // 테스트용: 닉네임 → 캐릭터 기본 정보
+  // 닉네임으로 캐릭터와 아이템 조회
   @GetMapping("/character")
-  public Mono<ResponseEntity<Map<String, Object>>> getCharacter(@RequestParam String name) {
-    System.out.println("요청 닉네임: " + name);
-    return nexonService.getCharacterByName(name)
-        .map(ResponseEntity::ok)
+  public Mono<ResponseEntity<Map<String, Object>>> getCharacterWithItems(@RequestParam String name) {
+    return nexonService.fetchOcidByName(name)
+        .flatMap(ocid ->
+            Mono.zip(
+                nexonService.fetchCharacterBasic(ocid),
+                nexonService.fetchCharacterItems(ocid)
+            ).map(tuple -> {
+              Map<String, Object> result = new java.util.HashMap<>();
+              result.put("basic", tuple.getT1()); // 캐릭터 기본 정보
+              result.put("items", tuple.getT2().get("item_equipment")); // 착용 아이템 목록
+              return ResponseEntity.ok(result);
+            })
+        )
         .onErrorResume(ex -> {
-          ex.printStackTrace();
-          if (ex instanceof IllegalArgumentException) {
-            return Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("error", ex.getMessage())));
+          if (ex instanceof org.springframework.web.reactive.function.client.WebClientResponseException) {
+            org.springframework.web.reactive.function.client.WebClientResponseException we =
+                (org.springframework.web.reactive.function.client.WebClientResponseException) ex;
+            if (we.getRawStatusCode() == 400) {
+              return Mono.just(ResponseEntity.status(404)
+                  .body(Map.of("error", "존재하지 않는 닉네임입니다.")));
+            }
           }
-          return Mono.just(ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-              .body(Map.of("error", ex.getMessage())));
+          return Mono.just(ResponseEntity.status(502)
+              .body(Map.of("error", "API 요청 실패: " + ex.getMessage())));
         });
   }
 
